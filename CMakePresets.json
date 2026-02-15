@@ -1,0 +1,25 @@
+{
+	"version": 3,
+	"configurePresets": [
+		{
+			"name": "vr-release",
+			"displayName": "VR Release",
+			"generator": "Visual Studio 17 2022",
+			"binaryDir": "${sourceDir}/build",
+			"cacheVariables": {
+				"BUILD_SKYRIMVR": "ON",
+				"CMAKE_BUILD_TYPE": "Release",
+				"VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
+			},
+			"toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+		},
+		{
+			"name": "vr-debug",
+			"displayName": "VR Debug",
+			"inherits": "vr-release",
+			"cacheVariables": {
+				"CMAKE_BUILD_TYPE": "Debug"
+			}
+		}
+	]
+}

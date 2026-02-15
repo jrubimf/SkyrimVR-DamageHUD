@@ -1,0 +1,11 @@
+{
+	"name": "floating-damage",
+	"version-string": "1.0.0",
+	"description": "Floating damage numbers for Skyrim VR",
+	"dependencies": [
+		"openvr",
+		"rsm-binary-io",
+		"spdlog",
+		"xbyak"
+	]
+}

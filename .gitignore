@@ -1,0 +1,21 @@
+# Build
+build/
+out/
+*.dll
+*.lib
+*.exp
+*.pdb
+*.obj
+*.ilk
+
+# IDE
+.vs/
+.vscode/
+*.user
+CMakeSettings.json
+
+# Claude
+.claude/
+
+# vcpkg installed
+vcpkg_installed/
