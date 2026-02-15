@@ -100,91 +100,76 @@ void FloatingDamage::AdvanceMovie(float a_interval, std::uint32_t a_currentTime)
 	if (hudMovie) {
 		auto* ui = RE::UI::GetSingleton();
 		if (!ui || !ui->IsMenuOpen("HUD Menu")) {
-			logger::info("HUDMenu gone — resetting injection state");
-			hudMovie.reset();
+			logger::info("HUDMenu gone — resetting state");
+			hudMovie = nullptr;
 			hudInjectionReady = false;
-			hudSettingsSent = false;
 			vrPanelReady = false;
+			activeDamageTexts.clear();
 		}
 	}
 
-	// Re-inject if HUDMenu reappeared after save/load
+	// Re-acquire HUD movie pointer after save/load
 	if (!hudMovie && ms_pSingleton) {
 		auto* ui = RE::UI::GetSingleton();
 		if (ui && ui->IsMenuOpen("HUD Menu")) {
 			auto hudMenu = ui->GetMenu("HUD Menu");
 			if (hudMenu && hudMenu->uiMovie) {
-				hudMovie.reset(hudMenu->uiMovie.get());
-
-				RE::GFxValue root;
-				hudMovie->GetVariable(&root, "_root");
-				if (root.IsDisplayObject()) {
-					RE::GFxValue container;
-					root.CreateEmptyMovieClip(&container, "fdClip", 99999);
-					if (container.IsDisplayObject()) {
-						RE::GFxValue loadArg;
-						loadArg.SetString("FloatingDamage.swf");
-						container.Invoke("loadMovie", nullptr, &loadArg, 1);
-						logger::info("HUD re-injection after save/load");
-					}
-				}
-				hudInjectionReady = false;
-				hudSettingsSent = false;
+				hudMovie = hudMenu->uiMovie.get();
+				hudInjectionReady = true;
 				vrPanelReady = false;
+				logger::info("HUD movie acquired (re-attach after save/load)");
 			}
 		}
 	}
 
-	// Poll for HUD injection completion
+	// First-time readiness
 	if (hudMovie && !hudInjectionReady) {
-		RE::GFxValue widget;
-		hudMovie->GetVariable(&widget, "_root.fdClip.widget");
-		if (widget.IsObject()) {
-			hudInjectionReady = true;
-
-			// Our DamageWidget.as constructor sets Stage.align="TL" and
-			// Stage.scaleMode="noScale" which are GLOBAL and break the HUD layout.
-			// Restore the HUD's original settings.
-			RE::GFxValue scaleMode;
-			scaleMode.SetString("showAll");
-			hudMovie->SetVariable("Stage.scaleMode", scaleMode, RE::GFxMovie::SetVarType::kNormal);
-
-			RE::GFxValue align;
-			align.SetString("");
-			hudMovie->SetVariable("Stage.align", align, RE::GFxMovie::SetVarType::kNormal);
-
-			// Log Stage dimensions for coordinate debugging
-			RE::GFxValue stageW, stageH;
-			hudMovie->GetVariable(&stageW, "Stage.width");
-			hudMovie->GetVariable(&stageH, "Stage.height");
-			logger::info("HUD injection ready - widget found, Stage: {}x{}",
-				stageW.IsNumber() ? stageW.GetNumber() : -1,
-				stageH.IsNumber() ? stageH.GetNumber() : -1);
-		}
+		hudInjectionReady = true;
+		logger::info("HUD movie ready for direct text rendering");
 	}
 
-	// Send settings once widget is available
-	if (hudInjectionReady && !hudSettingsSent) {
-		RE::GFxValue args[8];
-		args[0].SetString(ini.Name.c_str());
-		args[1].SetNumber(static_cast<double>(ini.Size));
-		args[2].SetNumber(static_cast<double>(ini.Alpha));
-		args[3].SetNumber(static_cast<double>(ini.BlockSize));
-		args[4].SetNumber(static_cast<double>(ini.SneakSize));
-		args[5].SetNumber(static_cast<double>(ini.CriticalSize));
-		args[6].SetNumber(static_cast<double>(ini.DamageDisplayMode));
-		args[7].SetNumber(static_cast<double>(ini.HealDisplayMode));
-
-		bool result = hudMovie->Invoke("_root.fdClip.widget.SetSettings", nullptr, args, 8);
-		logger::info("HUD injection SetSettings result: {}", result);
-		if (result) {
-			hudSettingsSent = true;
-		}
-	}
-
-	// Initialize VR panel geometry once HUD injection is ready
+	// Initialize VR panel geometry
 	if (hudInjectionReady && !vrPanelReady) {
 		InitVRPanel();
+	}
+
+	// Animate active damage texts (move up + fade out)
+	if (hudMovie && !activeDamageTexts.empty()) {
+		auto it = activeDamageTexts.begin();
+		while (it != activeDamageTexts.end()) {
+			it->elapsed += a_interval;
+			float progress = it->elapsed / DamageTextInfo::DURATION;
+
+			std::string name = "fdTxt" + std::to_string(it->depth);
+
+			if (progress >= 1.0f) {
+				// Remove finished text
+				RE::GFxValue clip;
+				hudMovie->GetVariable(&clip, ("_root." + name).c_str());
+				if (clip.IsDisplayObject()) {
+					clip.Invoke("removeMovieClip");
+				}
+				it = activeDamageTexts.erase(it);
+			} else {
+				// Update position (rise) and alpha (fade in last 40%)
+				RE::GFxValue clip;
+				hudMovie->GetVariable(&clip, ("_root." + name).c_str());
+				if (clip.IsDisplayObject()) {
+					float newY = it->startY - DamageTextInfo::RISE_PX * progress;
+					RE::GFxValue yVal;
+					yVal.SetNumber(newY);
+					clip.SetMember("_y", yVal);
+
+					if (progress > 0.6f) {
+						float fade = 1.0f - (progress - 0.6f) / 0.4f;
+						RE::GFxValue alpha;
+						alpha.SetNumber(static_cast<double>(fade * 100.0f));
+						clip.SetMember("_alpha", alpha);
+					}
+				}
+				++it;
+			}
+		}
 	}
 
 	UpdateActorData();
@@ -228,40 +213,19 @@ void FloatingDamage::OnMenuOpen()
 			}
 		}
 
-		// Inject our SWF into HUDMenu's Scaleform movie
+		// Get HUD movie pointer for direct text rendering
 		auto* ui = RE::UI::GetSingleton();
 		if (ui) {
 			auto hudMenu = ui->GetMenu("HUD Menu");
 			if (hudMenu && hudMenu->uiMovie) {
-				hudMovie.reset(hudMenu->uiMovie.get());
-
-				RE::GFxValue root;
-				hudMovie->GetVariable(&root, "_root");
-
-				if (root.IsDisplayObject()) {
-					// Create a container clip in the HUD and load our SWF into it
-					RE::GFxValue container;
-					root.CreateEmptyMovieClip(&container, "fdClip", 99999);
-
-					if (container.IsDisplayObject()) {
-						RE::GFxValue loadArg;
-						loadArg.SetString("FloatingDamage.swf");
-						container.Invoke("loadMovie", nullptr, &loadArg, 1);
-
-						logger::info("HUD injection: loadMovie called on fdClip");
-					} else {
-						logger::error("HUD injection: failed to create fdClip");
-					}
-				} else {
-					logger::error("HUD injection: failed to get _root");
-				}
+				hudMovie = hudMenu->uiMovie.get();
+				hudInjectionReady = true;
+				logger::info("HUD movie acquired for direct text rendering");
 			} else {
-				logger::error("HUD injection: HUDMenu not available");
+				logger::error("HUDMenu not available");
 			}
 		}
-
 		hudInjectionReady = false;
-		hudSettingsSent = false;
 	}
 }
 
@@ -285,23 +249,20 @@ void FloatingDamage::OnMenuClose()
 			}
 		}
 
-		// Clean up our clip from the HUD movie
+		// Clean up active damage texts from HUD movie
 		if (hudMovie) {
-			RE::GFxValue root;
-			hudMovie->GetVariable(&root, "_root");
-			if (root.IsDisplayObject()) {
-				RE::GFxValue fdClip;
-				root.GetMember("fdClip", &fdClip);
-				if (fdClip.IsDisplayObject()) {
-					fdClip.Invoke("removeMovieClip");
-					logger::info("HUD injection: removed fdClip");
+			for (auto& dt : activeDamageTexts) {
+				std::string name = "fdTxt" + std::to_string(dt.depth);
+				RE::GFxValue clip;
+				hudMovie->GetVariable(&clip, ("_root." + name).c_str());
+				if (clip.IsDisplayObject()) {
+					clip.Invoke("removeMovieClip");
 				}
 			}
-			hudMovie.reset();
+			hudMovie = nullptr;
 		}
-
+		activeDamageTexts.clear();
 		hudInjectionReady = false;
-		hudSettingsSent = false;
 		vrPanelReady = false;
 		list_reset = true;
 	}

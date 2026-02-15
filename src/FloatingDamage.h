@@ -5,6 +5,7 @@
 #include <chrono>
 #include <set>
 #include <unordered_set>
+#include <vector>
 
 class FloatingDamage :
 	public RE::IMenu,
@@ -39,10 +40,20 @@ public:
 	// Track last player hit target for correlating CriticalHit::Event
 	RE::FormID lastPlayerHitTarget{ 0 };
 
-	// HUD injection: our SWF is loaded into HUDMenu's movie
-	RE::GPtr<RE::GFxMovieView> hudMovie;
+	// HUD movie pointer — raw to avoid preventing engine destruction on save/load
+	RE::GFxMovieView* hudMovie{ nullptr };
 	bool hudInjectionReady{ false };
-	bool hudSettingsSent{ false };
+
+	// Direct text rendering (no SWF animation clips — avoids mask cropping)
+	struct DamageTextInfo {
+		int depth;
+		float elapsed;
+		float startY;
+		static constexpr float DURATION = 1.5f;   // seconds
+		static constexpr float RISE_PX  = 60.0f;   // pixels to rise over duration
+	};
+	std::vector<DamageTextInfo> activeDamageTexts;
+	int nextDmgTextId{ 80000 };
 
 	// VR panel geometry: angular half-size of HUD panel (tan of half-angle)
 	float panelTanHalf{ 0.0f };

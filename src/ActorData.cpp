@@ -262,61 +262,83 @@ void ActorData::SetDamage(RE::Actor* actor, int flag, std::uint32_t damage)
 	if (!isPlayer && floatingDmg->lastPlayerHitTarget != actor->GetFormID())
 		return;
 
-	// Compute where the player is currently looking on the HUD panel.
-	// The HUD panel's ROTATION lags behind head movement; this compensates
-	// by projecting the camera's look direction onto the panel's local axes.
-	float viewCenterX = 0.5f;
-	float viewCenterY = 0.5f;
+	if (!floatingDmg->vrPanelReady)
+		return;
 
+	// Get camera forward direction (world space)
+	// Camera axes: col0=right, col1=up, col2=forward (DirectX convention)
 	auto* camera = RE::Main::WorldRootCamera();
-	if (camera) {
-		auto* ui = RE::UI::GetSingleton();
-		auto hudMenu = ui ? ui->GetMenu("HUD Menu") : nullptr;
-		if (hudMenu) {
-			auto* wsMenu = static_cast<RE::WorldSpaceMenu*>(hudMenu.get());
-			auto* menuNode = wsMenu->menuNode.get();
-			if (menuNode) {
-				// Camera forward: col2 (DirectX convention)
-				auto& cRot = camera->world.rotate;
-				RE::NiPoint3 camFwd = { cRot.entry[0][2], cRot.entry[1][2], cRot.entry[2][2] };
+	if (!camera)
+		return;
 
-				// Panel's local axes from its world rotation
-				auto& pRot = menuNode->world.rotate;
-				RE::NiPoint3 panelRight = { pRot.entry[0][0], pRot.entry[1][0], pRot.entry[2][0] };
-				RE::NiPoint3 panelUp    = { pRot.entry[0][1], pRot.entry[1][1], pRot.entry[2][1] };
-				RE::NiPoint3 panelFwd   = { pRot.entry[0][2], pRot.entry[1][2], pRot.entry[2][2] };
+	auto& cRot = camera->world.rotate;
+	RE::NiPoint3 camFwd = { cRot.entry[0][2], cRot.entry[1][2], cRot.entry[2][2] };
 
-				// Project camera look direction onto panel axes.
-				// This tells us where on the panel the camera is aimed.
-				float rightProj = camFwd.x * panelRight.x + camFwd.y * panelRight.y + camFwd.z * panelRight.z;
-				float upProj    = camFwd.x * panelUp.x    + camFwd.y * panelUp.y    + camFwd.z * panelUp.z;
-				float fwdProj   = camFwd.x * panelFwd.x   + camFwd.y * panelFwd.y   + camFwd.z * panelFwd.z;
+	// Get HUD panel's menuNode for its world rotation
+	auto* ui = RE::UI::GetSingleton();
+	if (!ui)
+		return;
+	auto hudMenu = ui->GetMenu("HUD Menu");
+	if (!hudMenu)
+		return;
+	auto* wsMenu = static_cast<RE::WorldSpaceMenu*>(hudMenu.get());
+	auto* menuNode = wsMenu->menuNode.get();
+	if (!menuNode)
+		return;
 
-				float absFwd = std::fabs(fwdProj);
-				if (absFwd > 0.1f) {
-					float pth = floatingDmg->panelTanHalf;
-					if (pth <= 0.0f) pth = 1.4f;
+	// Transform camera forward into the panel's local coordinate system.
+	// Panel world.rotate columns are the panel's local axes in world space.
+	// localDir = R^T * camFwd (transpose because R is orthogonal)
+	auto& pRot = menuNode->world.rotate;
+	float lx = pRot.entry[0][0] * camFwd.x + pRot.entry[1][0] * camFwd.y + pRot.entry[2][0] * camFwd.z;
+	float ly = pRot.entry[0][1] * camFwd.x + pRot.entry[1][1] * camFwd.y + pRot.entry[2][1] * camFwd.z;
+	float lz = pRot.entry[0][2] * camFwd.x + pRot.entry[1][2] * camFwd.y + pRot.entry[2][2] * camFwd.z;
 
-					viewCenterX = 0.5f + rightProj / (absFwd * 2.0f * pth);
-					viewCenterY = 0.5f - upProj / (absFwd * 2.0f * pth);
-				}
-			}
-		}
-	}
-
-	// Position relative to where we're looking: right=dealt, left=received
-	RE::NiPoint3 screenPos;
-	if (isPlayer) {
-		screenPos.x = viewCenterX - 0.2f;
+	// Determine forward axis (largest magnitude component = the axis most aligned with gaze).
+	// Panel convention may differ from camera; detect dynamically.
+	float absX = std::fabs(lx), absY = std::fabs(ly), absZ = std::fabs(lz);
+	float fwdComp, rightComp, upComp;
+	if (absY >= absX && absY >= absZ) {
+		// col1 (Y) is forward — expected for translate.y=15 panels
+		fwdComp = ly;
+		rightComp = lx;
+		upComp = lz;
+	} else if (absZ >= absX && absZ >= absY) {
+		// col2 (Z) is forward
+		fwdComp = lz;
+		rightComp = lx;
+		upComp = -ly;  // keep right-hand rule
 	} else {
-		screenPos.x = viewCenterX + 0.2f;
+		// col0 (X) is forward — unusual
+		fwdComp = lx;
+		rightComp = -ly;
+		upComp = lz;
 	}
-	screenPos.y = viewCenterY - 0.15f;
-	screenPos.z = 0.5f;
 
-	// Clamp to HUD bounds
-	screenPos.x = std::clamp(screenPos.x, 0.05f, 0.95f);
-	screenPos.y = std::clamp(screenPos.y, 0.05f, 0.95f);
+	if (std::fabs(fwdComp) < 0.01f)
+		return;  // not looking at the panel
+
+	// Compute where gaze center falls on the panel in tangent space
+	float horizTan = rightComp / fwdComp;
+	float vertTan = upComp / fwdComp;
+
+	// Convert to screen coordinate offset
+	// panelTanHalf covers half the panel width (0.5 in screen space)
+	float panelTH = floatingDmg->panelTanHalf;
+	float gazeOffsetX = horizTan / (2.0f * panelTH);
+	float gazeOffsetY = -vertTan / (2.0f * panelTH);
+
+	// Fixed base positions
+	float baseX = isPlayer ? 0.3f : 0.7f;
+	float baseY = 0.38f;
+
+	// Apply gaze compensation so text follows head rotation
+	RE::NiPoint3 screenPos;
+	screenPos.x = baseX + gazeOffsetX;
+	screenPos.y = baseY + gazeOffsetY;
+
+	logger::info("PanelProj: local=({:.3f},{:.3f},{:.3f}) gazeOff=({:.3f},{:.3f}) screen=({:.3f},{:.3f})",
+		lx, ly, lz, gazeOffsetX, gazeOffsetY, screenPos.x, screenPos.y);
 
 	double scale = 100.0;
 
@@ -329,20 +351,20 @@ void ActorData::SetDamage(RE::Actor* actor, int flag, std::uint32_t damage)
 
 	switch (flag) {
 	case -4:
-		screenPos.x += static_cast<float>(Random() * scale / 100);
-		screenPos.y += static_cast<float>(Random() * scale / 100);
+		screenPos.x += static_cast<float>(Random() * 0.005);
+		screenPos.y += static_cast<float>(Random() * 0.005);
 		colors.push_back(ini.Critical);
 		texts.push_back(ini.CriticalString);
 		break;
 	case -3:
-		screenPos.x += static_cast<float>(Random() * scale / 100);
-		screenPos.y += static_cast<float>(Random() * scale / 100);
+		screenPos.x += static_cast<float>(Random() * 0.005);
+		screenPos.y += static_cast<float>(Random() * 0.005);
 		colors.push_back(ini.Sneak);
 		texts.push_back(ini.SneakString);
 		break;
 	case -2:
-		screenPos.x += static_cast<float>(Random() * scale / 100);
-		screenPos.y += static_cast<float>(Random() * scale / 100);
+		screenPos.x += static_cast<float>(Random() * 0.005);
+		screenPos.y += static_cast<float>(Random() * 0.005);
 		colors.push_back(ini.Block);
 		texts.push_back(ini.BlockString);
 		break;
@@ -354,8 +376,8 @@ void ActorData::SetDamage(RE::Actor* actor, int flag, std::uint32_t damage)
 		texts.push_back(ini.TimeDamageFront + std::to_string(damage) + ini.TimeDamageBack);
 		break;
 	case 0:
-		screenPos.x += static_cast<float>(Random() * scale / 100);
-		screenPos.y += static_cast<float>(Random() * scale / 100);
+		screenPos.x += static_cast<float>(Random() * 0.005);
+		screenPos.y += static_cast<float>(Random() * 0.005);
 		if (isPlayer || actor->IsPlayerTeammate())
 			colors.push_back(ini.FollowerSingleDamage);
 		else
@@ -469,17 +491,84 @@ void ActorData::SetDamage(RE::Actor* actor, int flag, std::uint32_t damage)
 		}
 	}
 
-	for (std::size_t i = 0; i < flags.size(); i++) {
-		RE::GFxValue args[6];
-		args[0].SetString(texts[i].c_str());
-		args[1].SetNumber(static_cast<double>(screenPos.x));
-		args[2].SetNumber(static_cast<double>(screenPos.y));
-		args[3].SetNumber(scale);
-		args[4].SetNumber(static_cast<double>(colors[i]));
-		args[5].SetNumber(static_cast<double>(flags[i]));
+	// Final clamp after all dispersion adjustments
+	screenPos.x = std::clamp(screenPos.x, 0.05f, 0.95f);
+	screenPos.y = std::clamp(screenPos.y, 0.10f, 0.90f);
 
-		bool invokeResult = floatingDmg->hudMovie->Invoke("_root.fdClip.widget.SetDamageText", nullptr, args, 6);
-		logger::info("Invoke SetDamageText: result={} text='{}' pos=({},{}) scale={} color={} flag={}",
-			invokeResult, texts[i], screenPos.x, screenPos.y, scale, colors[i], flags[i]);
+	// Safety: verify HUDMenu is still valid (prevents crash during menu transitions)
+	{
+		auto* uiCheck = RE::UI::GetSingleton();
+		if (!uiCheck || !uiCheck->IsMenuOpen("HUD Menu"))
+			return;
+	}
+
+	// Create text fields directly on the HUD movie (no SWF animation clips = no mask cropping)
+	RE::GFxValue root;
+	floatingDmg->hudMovie->GetVariable(&root, "_root");
+	if (!root.IsDisplayObject())
+		return;
+
+	for (std::size_t i = 0; i < flags.size(); i++) {
+		int depth = floatingDmg->nextDmgTextId++;
+		std::string clipName = "fdTxt" + std::to_string(depth);
+
+		float pixelX = screenPos.x * 1024.0f;
+		float pixelY = screenPos.y * 1024.0f;
+
+		// Create a container movie clip
+		RE::GFxValue clip;
+		root.CreateEmptyMovieClip(&clip, clipName.c_str(), depth);
+		if (!clip.IsDisplayObject())
+			continue;
+
+		RE::GFxValue xVal, yVal;
+		xVal.SetNumber(pixelX);
+		yVal.SetNumber(pixelY);
+		clip.SetMember("_x", xVal);
+		clip.SetMember("_y", yVal);
+
+		// Create text field: createTextField(name, depth, x, y, width, height)
+		RE::GFxValue tfArgs[6];
+		tfArgs[0].SetString("tf");
+		tfArgs[1].SetNumber(1);
+		tfArgs[2].SetNumber(-250.0);
+		tfArgs[3].SetNumber(-50.0);
+		tfArgs[4].SetNumber(500.0);
+		tfArgs[5].SetNumber(120.0);
+		clip.Invoke("createTextField", nullptr, tfArgs, 6);
+
+		RE::GFxValue tf;
+		clip.GetMember("tf", &tf);
+		if (!tf.IsDisplayObject())
+			continue;
+
+		// Build color hex string for htmlText (RGB from uint32 color)
+		char colorHex[8];
+		snprintf(colorHex, sizeof(colorHex), "#%06X", colors[i] & 0xFFFFFF);
+
+		// Use htmlText to set font, size, color all at once — avoids TextFormat API issues
+		std::string html = "<p align='center'><font face='" + ini.Name +
+			"' size='" + std::to_string(ini.Size) +
+			"' color='" + colorHex + "'>" +
+			texts[i] + "</font></p>";
+
+		RE::GFxValue htmlVal;
+		htmlVal.SetString(html.c_str());
+		tf.SetMember("html", RE::GFxValue(true));
+		tf.SetMember("htmlText", htmlVal);
+		tf.SetMember("multiline", RE::GFxValue(false));
+		tf.SetMember("wordWrap", RE::GFxValue(false));
+		tf.SetMember("background", RE::GFxValue(false));
+		tf.SetMember("border", RE::GFxValue(false));
+
+		RE::GFxValue alphaVal;
+		alphaVal.SetNumber(static_cast<double>(ini.Alpha));
+		clip.SetMember("_alpha", alphaVal);
+
+		// Track for animation
+		floatingDmg->activeDamageTexts.push_back({ depth, 0.0f, pixelY });
+
+		logger::info("DmgText created: '{}' pos=({:.0f},{:.0f}) color={} depth={}",
+			texts[i], pixelX, pixelY, colors[i], depth);
 	}
 }
