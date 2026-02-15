@@ -262,15 +262,61 @@ void ActorData::SetDamage(RE::Actor* actor, int flag, std::uint32_t damage)
 	if (!isPlayer && floatingDmg->lastPlayerHitTarget != actor->GetFormID())
 		return;
 
-	// Fixed position: right for damage dealt, left for damage received
+	// Compute where the player is currently looking on the HUD panel.
+	// The HUD panel's ROTATION lags behind head movement; this compensates
+	// by projecting the camera's look direction onto the panel's local axes.
+	float viewCenterX = 0.5f;
+	float viewCenterY = 0.5f;
+
+	auto* camera = RE::Main::WorldRootCamera();
+	if (camera) {
+		auto* ui = RE::UI::GetSingleton();
+		auto hudMenu = ui ? ui->GetMenu("HUD Menu") : nullptr;
+		if (hudMenu) {
+			auto* wsMenu = static_cast<RE::WorldSpaceMenu*>(hudMenu.get());
+			auto* menuNode = wsMenu->menuNode.get();
+			if (menuNode) {
+				// Camera forward: col2 (DirectX convention)
+				auto& cRot = camera->world.rotate;
+				RE::NiPoint3 camFwd = { cRot.entry[0][2], cRot.entry[1][2], cRot.entry[2][2] };
+
+				// Panel's local axes from its world rotation
+				auto& pRot = menuNode->world.rotate;
+				RE::NiPoint3 panelRight = { pRot.entry[0][0], pRot.entry[1][0], pRot.entry[2][0] };
+				RE::NiPoint3 panelUp    = { pRot.entry[0][1], pRot.entry[1][1], pRot.entry[2][1] };
+				RE::NiPoint3 panelFwd   = { pRot.entry[0][2], pRot.entry[1][2], pRot.entry[2][2] };
+
+				// Project camera look direction onto panel axes.
+				// This tells us where on the panel the camera is aimed.
+				float rightProj = camFwd.x * panelRight.x + camFwd.y * panelRight.y + camFwd.z * panelRight.z;
+				float upProj    = camFwd.x * panelUp.x    + camFwd.y * panelUp.y    + camFwd.z * panelUp.z;
+				float fwdProj   = camFwd.x * panelFwd.x   + camFwd.y * panelFwd.y   + camFwd.z * panelFwd.z;
+
+				float absFwd = std::fabs(fwdProj);
+				if (absFwd > 0.1f) {
+					float pth = floatingDmg->panelTanHalf;
+					if (pth <= 0.0f) pth = 1.4f;
+
+					viewCenterX = 0.5f + rightProj / (absFwd * 2.0f * pth);
+					viewCenterY = 0.5f - upProj / (absFwd * 2.0f * pth);
+				}
+			}
+		}
+	}
+
+	// Position relative to where we're looking: right=dealt, left=received
 	RE::NiPoint3 screenPos;
 	if (isPlayer) {
-		screenPos.x = 0.3f;   // center-left: damage received
+		screenPos.x = viewCenterX - 0.2f;
 	} else {
-		screenPos.x = 0.7f;   // center-right: damage dealt
+		screenPos.x = viewCenterX + 0.2f;
 	}
-	screenPos.y = 0.35f;
+	screenPos.y = viewCenterY - 0.15f;
 	screenPos.z = 0.5f;
+
+	// Clamp to HUD bounds
+	screenPos.x = std::clamp(screenPos.x, 0.05f, 0.95f);
+	screenPos.y = std::clamp(screenPos.y, 0.05f, 0.95f);
 
 	double scale = 100.0;
 

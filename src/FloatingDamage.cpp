@@ -96,6 +96,45 @@ RE::UI_MESSAGE_RESULTS FloatingDamage::ProcessMessage(RE::UIMessage& a_message)
 
 void FloatingDamage::AdvanceMovie(float a_interval, std::uint32_t a_currentTime)
 {
+	// Safety: verify HUDMenu still exists (gets destroyed on save/load)
+	if (hudMovie) {
+		auto* ui = RE::UI::GetSingleton();
+		if (!ui || !ui->IsMenuOpen("HUD Menu")) {
+			logger::info("HUDMenu gone — resetting injection state");
+			hudMovie.reset();
+			hudInjectionReady = false;
+			hudSettingsSent = false;
+			vrPanelReady = false;
+		}
+	}
+
+	// Re-inject if HUDMenu reappeared after save/load
+	if (!hudMovie && ms_pSingleton) {
+		auto* ui = RE::UI::GetSingleton();
+		if (ui && ui->IsMenuOpen("HUD Menu")) {
+			auto hudMenu = ui->GetMenu("HUD Menu");
+			if (hudMenu && hudMenu->uiMovie) {
+				hudMovie.reset(hudMenu->uiMovie.get());
+
+				RE::GFxValue root;
+				hudMovie->GetVariable(&root, "_root");
+				if (root.IsDisplayObject()) {
+					RE::GFxValue container;
+					root.CreateEmptyMovieClip(&container, "fdClip", 99999);
+					if (container.IsDisplayObject()) {
+						RE::GFxValue loadArg;
+						loadArg.SetString("FloatingDamage.swf");
+						container.Invoke("loadMovie", nullptr, &loadArg, 1);
+						logger::info("HUD re-injection after save/load");
+					}
+				}
+				hudInjectionReady = false;
+				hudSettingsSent = false;
+				vrPanelReady = false;
+			}
+		}
+	}
+
 	// Poll for HUD injection completion
 	if (hudMovie && !hudInjectionReady) {
 		RE::GFxValue widget;
