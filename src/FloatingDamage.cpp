@@ -39,6 +39,22 @@ public:
 	}
 };
 
+class MCMReloadSink : public RE::BSTEventSink<RE::MenuOpenCloseEvent>
+{
+public:
+	RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_event,
+		RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
+	{
+		if (a_event && !a_event->opening && a_event->menuName == "Journal Menu") {
+			logger::info("Journal Menu closed — reloading MCM settings");
+			ini.Reload();
+		}
+		return RE::BSEventNotifyControl::kContinue;
+	}
+};
+
+static MCMReloadSink g_mcmReloadSink;
+
 FloatingDamage* FloatingDamage::ms_pSingleton = nullptr;
 RE::BSSpinLock FloatingDamage::ms_lock;
 
@@ -70,6 +86,9 @@ bool FloatingDamage::Register()
 	ui->Register("Floating Damage", []() -> RE::IMenu* { return new FloatingDamage(); });
 
 	AutoOpenFloatingDamageSink::Register();
+
+	// Register MCM settings reload on Journal Menu close
+	ui->AddEventSink<RE::MenuOpenCloseEvent>(&g_mcmReloadSink);
 
 	return true;
 }
@@ -506,14 +525,13 @@ void FloatingDamage::GetNearActors(RE::TESObjectCELL* cell, std::unordered_set<R
 	auto playerPos = player->GetPosition();
 	double farRadius = ini.FarRadius;
 	double nearRadius = ini.NearRadius;
-	bool onlyHostile = ini.OnlyHostile;
 
 	cell->ForEachReference([&](RE::TESObjectREFR* ref) -> RE::BSContainer::ForEachResult {
 		auto* actor = ref->As<RE::Actor>();
 		if (!actor)
 			return RE::BSContainer::ForEachResult::kContinue;
 
-		if (actor->IsInCombat() && (!onlyHostile || player->IsHostileToActor(actor))) {
+		if (actor->IsInCombat()) {
 			far_list->insert(actor->GetFormID());
 			near_list->insert(actor->GetFormID());
 		} else {

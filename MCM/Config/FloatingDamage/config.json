@@ -1,0 +1,220 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Exit-9B/MCM-Helper/main/docs/config.schema.json",
+  "modName": "FloatingDamage",
+  "displayName": "Floating Damage",
+  "minMcmVersion": 13,
+  "pages": [
+    {
+      "pageDisplayName": "Display",
+      "content": [
+        { "text": "General", "type": "header" },
+        {
+          "text": "Enable Health",
+          "type": "enum",
+          "help": "Show health damage/heal numbers. 0=Off, 1=Damage only, 2=Heal only, 3=Both",
+          "id": "iEnableHealth:Display",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 3,
+            "options": ["Off", "Damage Only", "Heal Only", "Both"]
+          }
+        },
+        {
+          "text": "Text Size",
+          "type": "slider",
+          "help": "Font size for damage numbers",
+          "id": "iSize:Display",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 24,
+            "min": 12,
+            "max": 72,
+            "step": 2,
+            "formatString": "{0}"
+          }
+        },
+        {
+          "text": "Text Alpha",
+          "type": "slider",
+          "help": "Text transparency (0=invisible, 100=fully opaque)",
+          "id": "iAlpha:Display",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 100,
+            "min": 0,
+            "max": 100,
+            "step": 5,
+            "formatString": "{0}%"
+          }
+        },
+        {
+          "text": "Display Dispersion",
+          "type": "slider",
+          "help": "Random scatter of damage numbers to avoid overlap",
+          "id": "iDispersion:Display",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 2,
+            "min": 0,
+            "max": 10,
+            "step": 1,
+            "formatString": "{0}"
+          }
+        },
+        { "text": "Special Damage", "type": "header" },
+        {
+          "text": "Show Block",
+          "type": "enum",
+          "help": "Show BLOCK text. 0=Off, 1=Show, 2=Don't show",
+          "id": "iEnableBlock:Display",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 1,
+            "options": ["Off", "Show", "Don't Show"]
+          }
+        },
+        {
+          "text": "Show Sneak",
+          "type": "enum",
+          "help": "Show SNEAK text. 0=Off, 1=Show, 2=Don't show",
+          "id": "iEnableSneak:Display",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 1,
+            "options": ["Off", "Show", "Don't Show"]
+          }
+        },
+        {
+          "text": "Show Critical",
+          "type": "enum",
+          "help": "Show CRITICAL text. 0=Off, 1=Show, 2=Don't show",
+          "id": "iEnableCritical:Display",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 1,
+            "options": ["Off", "Show", "Don't Show"]
+          }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Colors",
+      "content": [
+        { "text": "Damage Dealt", "type": "header" },
+        {
+          "text": "Damage Color",
+          "type": "color",
+          "help": "Color for damage dealt to enemies",
+          "id": "iDamageColor:Colors",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 16777215
+          }
+        },
+        {
+          "text": "Damage Over Time",
+          "type": "color",
+          "help": "Color for accumulated damage over time",
+          "id": "iDoTColor:Colors",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 16766720
+          }
+        },
+        { "text": "Damage Received", "type": "header" },
+        {
+          "text": "Player Damage Color",
+          "type": "color",
+          "help": "Color for damage received by player",
+          "id": "iReceivedColor:Colors",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 16711680
+          }
+        },
+        {
+          "text": "Player DoT Color",
+          "type": "color",
+          "help": "Color for accumulated damage over time on player",
+          "id": "iReceivedDoTColor:Colors",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 8388736
+          }
+        },
+        { "text": "Healing", "type": "header" },
+        {
+          "text": "Heal Color",
+          "type": "color",
+          "help": "Color for healing numbers",
+          "id": "iHealColor:Colors",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 65280
+          }
+        },
+        { "text": "Special", "type": "header" },
+        {
+          "text": "Block Color",
+          "type": "color",
+          "help": "Color for BLOCK text",
+          "id": "iBlockColor:Colors",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 16747520
+          }
+        },
+        {
+          "text": "Sneak Color",
+          "type": "color",
+          "help": "Color for SNEAK text",
+          "id": "iSneakColor:Colors",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 16747520
+          }
+        },
+        {
+          "text": "Critical Color",
+          "type": "color",
+          "help": "Color for CRITICAL text",
+          "id": "iCriticalColor:Colors",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 16747520
+          }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Behavior",
+      "content": [
+        { "text": "Healing", "type": "header" },
+        {
+          "text": "Hide Regen",
+          "type": "toggle",
+          "help": "Hide passive regeneration numbers",
+          "id": "bHideRegen:Behavior",
+          "valueOptions": {
+            "sourceType": "ModSettingBool",
+            "defaultValue": true
+          }
+        },
+        {
+          "text": "Min Heal",
+          "type": "slider",
+          "help": "Minimum heal amount to display",
+          "id": "iMinHeal:Behavior",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "defaultValue": 8,
+            "min": 1,
+            "max": 50,
+            "step": 1,
+            "formatString": "{0}"
+          }
+        }
+      ]
+    }
+  ]
+}

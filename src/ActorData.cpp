@@ -7,12 +7,12 @@
 
 static double Random()
 {
-	if (ini.DisplayDispersion == 0.0)
+	if (ini.DisplayDispersion == 0)
 		return 0.0;
 
 	static std::random_device rd;
 	static std::mt19937 mt(rd());
-	static std::uniform_real_distribution<double> score(-ini.DisplayDispersion, ini.DisplayDispersion);
+	std::uniform_real_distribution<double> score(-static_cast<double>(ini.DisplayDispersion), static_cast<double>(ini.DisplayDispersion));
 
 	return score(mt);
 }
@@ -48,10 +48,6 @@ bool ActorData::Update()
 	float current = actor->GetActorValue(RE::ActorValue::kHealth);
 	if (ini.EnableHealth != 0)
 		CheckActorValue(actor, ActorValues_Health, current);
-	if (ini.EnableMagicka != 0)
-		CheckActorValue(actor, ActorValues_Magicka, actor->GetActorValue(RE::ActorValue::kMagicka));
-	if (ini.EnableStamina != 0)
-		CheckActorValue(actor, ActorValues_Stamina, actor->GetActorValue(RE::ActorValue::kStamina));
 
 	if (!hitEvents.empty()) {
 		auto it = hitEvents.begin();
@@ -220,24 +216,8 @@ void ActorData::SetDamage(RE::Actor* actor, int flag, std::uint32_t damage)
 		if (ini.EnableHealth == 2 || damage == 0)
 			return;
 		break;
-	case 1:
-		if (ini.EnableMagicka == 2 || damage == 0)
-			return;
-		break;
-	case 2:
-		if (ini.EnableStamina == 2 || damage == 0)
-			return;
-		break;
 	case 10:
 		if (ini.EnableHealth == 1 || damage < ini.MinHeal)
-			return;
-		break;
-	case 11:
-		if (ini.EnableMagicka == 1 || damage < ini.MinHeal)
-			return;
-		break;
-	case 12:
-		if (ini.EnableStamina == 1 || damage < ini.MinHeal)
 			return;
 		break;
 	default:
@@ -449,25 +429,9 @@ void ActorData::SetDamage(RE::Actor* actor, int flag, std::uint32_t damage)
 			}
 		}
 		break;
-	case 1:
-		colors.push_back(ini.MagickaDamage);
-		texts.push_back(ini.MagickaDamageFront + std::to_string(damage) + ini.MagickaDamageBack);
-		break;
-	case 2:
-		colors.push_back(ini.StaminaDamage);
-		texts.push_back(ini.StaminaDamageFront + std::to_string(damage) + ini.StaminaDamageBack);
-		break;
 	case 10:
 		colors.push_back(ini.HealthHeal);
 		texts.push_back(ini.HealthHealFront + std::to_string(damage) + ini.HealthHealBack);
-		break;
-	case 11:
-		colors.push_back(ini.MagickaHeal);
-		texts.push_back(ini.MagickaHealFront + std::to_string(damage) + ini.MagickaHealBack);
-		break;
-	case 12:
-		colors.push_back(ini.StaminaHeal);
-		texts.push_back(ini.StaminaHealFront + std::to_string(damage) + ini.StaminaHealBack);
 		break;
 	default:
 		return;
